@@ -1,0 +1,8 @@
+refresh_rate: 30
+appenders:
+  stdout:
+    kind: console
+root:
+  level: info
+  appenders:
+    - stdout
