@@ -12,7 +12,7 @@ extern crate log;
 extern crate log4rs;
 extern crate bmp085;
 extern crate i2cdev;
-
+extern crate time;
 
 use bmp085::*;
 use i2cdev::linux::*;
@@ -33,6 +33,7 @@ pub enum SensorReading {
     TemperaturePressure {
         t: f32,
         p: f32,
+        ts: i64
     },
 }
 
@@ -95,9 +96,11 @@ fn main() {
                 timer.set_timeout(sampling_rate);
                 select!(
                 r:timer => {
+                    let now = time::now().to_timespec();
                     let temp = SensorReading::TemperaturePressure {
                         t: temperature_barometer.temperature_celsius().unwrap(),
-                        p: temperature_barometer.pressure_kpa().unwrap()
+                        p: temperature_barometer.pressure_kpa().unwrap(),
+                        ts: now.sec * 1000,
                     };
                     tx.send((EdenServerEndpoint::Temperature, temp));
                 });

@@ -88,7 +88,7 @@ impl SensorDataConsumer for Client {
         while let Ok(msg) = data.recv() {
             info!("Sending {:?}", msg);
             let reading = match msg.1 {
-                SensorReading::TemperaturePressure{ t: t, p: p} => EdenMessage::TempPressureReading { temp: t, pressure: p }
+                SensorReading::TemperaturePressure{ t: t, p: p, ts: ts} => EdenMessage::TempPressureReading { temp: t, pressure: p, timestamp: ts }
             };
             self.send(msg.0, reading);
         }
@@ -97,5 +97,5 @@ impl SensorDataConsumer for Client {
 
 #[derive(Serialize, Debug)]
 enum EdenMessage {
-    TempPressureReading { temp: f32, pressure: f32 }
+    TempPressureReading { temp: f32, pressure: f32, timestamp: i64 }
 }
