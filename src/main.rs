@@ -1,6 +1,7 @@
 #![feature(plugin, custom_attribute, proc_macro)]
 #![plugin(docopt_macros)]
 
+extern crate clap;
 extern crate chrono;
 extern crate toml;
 #[macro_use]
@@ -12,7 +13,6 @@ extern crate log;
 extern crate log4rs;
 extern crate bmp085;
 extern crate i2cdev;
-extern crate time;
 
 use bmp085::*;
 use i2cdev::linux::*;
@@ -24,16 +24,19 @@ use std::fs::File;
 use toml::Value;
 use std::sync::mpsc::channel;
 use std::thread;
+use chrono::*;
 
 mod client;
+mod error;
 use client::{Client, SensorDataConsumer, EdenClientConfig, EdenServerEndpoint};
+use clap::{Arg, App};
 
 #[derive(Debug)]
 pub enum SensorReading {
     TemperaturePressure {
         t: f32,
         p: f32,
-        ts: i64
+        ts: i64,
     },
 }
 
@@ -64,29 +67,54 @@ fn read_config<T: Read + Sized>(mut f: T) -> Result<EdenClientConfig, io::Error>
         .as_integer()
         .unwrap() as u64;
 
-    return Ok(EdenClientConfig::new(secret, raw_addr, temperature_barometer_addr, sampling_rate));
+    Ok(EdenClientConfig::new(secret, raw_addr, temperature_barometer_addr, sampling_rate))
 }
 
 
 fn main() {
-    let logging_filename = "logging.yml";
-    log4rs::init_file(logging_filename, Default::default()).unwrap();
+    let matches = App::new("Eden Client")
+        .version("0.1.0")
+        .author("Claus Matzinger. <claus.matzinger+kb@gmail.com>")
+        .about("Reads sensor input and sends it to an Eden Server :)")
+        .arg(Arg::with_name("config")
+            .short("c")
+            .long("config")
+            .help("Sets a custom config file [default: config.toml]")
+            .value_name("config.toml")
+            .takes_value(true))
+        .arg(Arg::with_name("logging")
+            .short("l")
+            .long("logging-conf")
+            .value_name("logging.yml")
+            .takes_value(true)
+            .help("Sets the logging configuration [default: logging.yml]"))
+        .get_matches();
 
-    let mut f = File::open("./config.toml").unwrap();
+    let config_filename = matches.value_of("config").unwrap_or("config.toml");
+    let logging_filename = matches.value_of("logging").unwrap_or("logging.yml");
+    info!("Using configuration file '{}' and logging config '{}'",
+          config_filename,
+          logging_filename);
+
+    log4rs::init_file(logging_filename, Default::default()).unwrap();
+    let mut f = File::open(config_filename).unwrap();
     let o = read_config(&mut f).unwrap();
+
     let sampling_rate = o.sampling_rate;
 
     info!("Initializing devices");
-    let i2c_dev = LinuxI2CDevice::new(o.temperature_barometer_addr.clone(), BMP085_I2C_ADDR).unwrap();
-    let mut temperature_barometer = BMP085BarometerThermometer::new(i2c_dev, SamplingMode::Standard).unwrap();
+    let i2c_dev = LinuxI2CDevice::new(o.temperature_barometer_addr.clone(), BMP085_I2C_ADDR)
+        .unwrap();
+    let mut temperature_barometer =
+        BMP085BarometerThermometer::new(i2c_dev, SamplingMode::Standard).unwrap();
 
     info!("Starting Eden");
-    let client = Client::new(o).unwrap();
+    let client = Client::new(o, EdenServerEndpoint::Temperature).unwrap();
 
-    let (tx, rx) = channel::<(EdenServerEndpoint, SensorReading)>();
+    let (tx, rx) = channel::<SensorReading>();
 
-    thread::spawn(move || {
-        client.attach(rx);
+    let dispatcher = thread::spawn(move || {
+        client.attach(rx, 100);
     });
 
     mioco::start(move || {
@@ -96,15 +124,18 @@ fn main() {
                 timer.set_timeout(sampling_rate);
                 select!(
                 r:timer => {
-                    let now = time::now().to_timespec();
+                    let now = UTC::now();
+                    let now_ms = now.timestamp() * 1000 + (now.timestamp_subsec_millis() as i64);
                     let temp = SensorReading::TemperaturePressure {
                         t: temperature_barometer.temperature_celsius().unwrap(),
                         p: temperature_barometer.pressure_kpa().unwrap(),
-                        ts: now.sec * 1000,
+                        ts: now_ms
                     };
-                    tx.send((EdenServerEndpoint::Temperature, temp));
+                // fire and forget
+                    let _ = tx.send(temp);
                 });
             }
         })
         .unwrap();
+    let _ = dispatcher.join();
 }

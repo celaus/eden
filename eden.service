@@ -1,0 +1,16 @@
+[Unit]
+Description=Eden IoT client
+Documentation=https://github.com/celaus/eden
+After=network.target
+
+[Service]
+Type=simple
+User=eden
+Group=eden
+WorkingDirectory=/opt/eden
+ExecStart=/opt/eden/target/release/eden
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -1,20 +1,20 @@
 extern crate ease;
 extern crate simple_jwt;
 extern crate hyper;
-
-
 extern crate serde_json;
+extern crate threadpool;
+use std::time::Duration;
 
-use std::collections::HashMap;
+
 use self::ease::{Url, Request};
 use std::sync::mpsc::Receiver;
-use std::str::FromStr;
-use self::hyper::header::{Authorization, Bearer};
+use self::hyper::header::{Authorization, Bearer, ContentType, ContentLength};
 use self::simple_jwt::{encode, Claim, Algorithm};
+use self::hyper::mime::{Mime, TopLevel, SubLevel, Attr, Value};
+use self::threadpool::ThreadPool;
 
-use SensorReading;
 use std::error::Error;
-use std::io;
+use SensorReading;
 
 #[derive(Debug)]
 pub struct EdenClientConfig {
@@ -30,27 +30,33 @@ pub enum EdenServerEndpoint {
 }
 
 impl EdenClientConfig {
-    pub fn new(secret: String, address: String, temperature_barometer_addr: String, sampling_rate: u64) -> EdenClientConfig {
+    pub fn new(secret: String,
+               address: String,
+               temperature_barometer_addr: String,
+               sampling_rate: u64)
+               -> EdenClientConfig {
         EdenClientConfig {
             server_address: address,
             secret: secret,
             temperature_barometer_addr: temperature_barometer_addr,
-            sampling_rate: sampling_rate
+            sampling_rate: sampling_rate,
         }
     }
 }
 
 pub trait SensorDataConsumer {
-    fn attach(&self, data: Receiver<(EdenServerEndpoint, SensorReading)>);
+    fn attach(&self, data: Receiver<SensorReading>, batch_size: usize);
 }
 
 pub struct Client {
     parsed_address: Url,
     jwt: String,
+    sender_pool: ThreadPool,
+    endpoint: EdenServerEndpoint,
 }
 
 impl Client {
-    pub fn new(config: EdenClientConfig) -> Result<Client, String> {
+    pub fn new(config: EdenClientConfig, endpoint: EdenServerEndpoint) -> Result<Client, String> {
         let u = try!(Url::parse(&config.server_address).map_err(|e| e.description().to_owned()));
 
         let mut claim = Claim::default();
@@ -58,39 +64,80 @@ impl Client {
         claim.set_payload_field("role", "sensor");
         let token = encode(&claim, &config.secret, Algorithm::HS256).unwrap();
 
+        let pool = ThreadPool::new(4);
+
         Ok(Client {
             parsed_address: u,
             jwt: token,
+            sender_pool: pool,
+            endpoint: endpoint,
         })
     }
 
-    pub fn send(&self,
-                endpoint: EdenServerEndpoint,
-                payload: Message)
-                -> Result<(), io::Error> {
-        let path = match endpoint {
+    pub fn send_bulk(&self, payload: Vec<Message>) {
+        let path = match self.endpoint {
             EdenServerEndpoint::Temperature => "temperature".to_string(),
         };
         let body = serde_json::to_string(&payload).unwrap();
         info!("Sending: {}", body);
+
         let url = self.parsed_address.clone().join(&path).unwrap();
-        info!("{:#?}",
-                 Request::new(url)
-                     .header(Authorization(Bearer { token: self.jwt.clone() }))
-                     .body(body)
-                     .post().unwrap());
-        return Ok(());
+        let token = self.jwt.clone();
+        let send_to = url.clone();
+
+        self.sender_pool.execute(move || {
+            match Request::new(send_to)
+                .header(ContentLength(body.len() as u64))
+                .header(ContentType(Mime(TopLevel::Application,
+                                         SubLevel::Json,
+                                         vec![(Attr::Charset, Value::Utf8)])))
+                .header(Authorization(Bearer { token: token }))
+                .body(body)
+                .post() {
+                Ok(_) => (),//Ok(()),
+                Err(e) => {
+                    warn!("Endpoint '{}' returned an error: {:?}", url, e);
+                    // Err(EdenServerError { description: e.description().to_owned() })
+                }
+            }
+        });
     }
 }
 
 impl SensorDataConsumer for Client {
-    fn attach(&self, data: Receiver<(EdenServerEndpoint, SensorReading)>) {
-        while let Ok(msg) = data.recv() {
-            info!("Sending {:?}", msg);
-            let reading = match msg.1 {
-                SensorReading::TemperaturePressure{ t: t, p: p, ts: ts} => Message { temp: t, pressure: p, timestamp: ts }
-            };
-            self.send(msg.0, reading);
+    fn attach(&self, data: Receiver<SensorReading>, batch_size: usize) {
+        let mut current_batch = 0;
+
+        let max_timeout = Duration::from_secs(90);
+
+        loop {
+            let mut v: Vec<Message> = Vec::with_capacity(batch_size);
+
+            loop {
+                if let Ok(msg) = data.recv_timeout(max_timeout) {
+                    v.push(match msg {
+                        SensorReading::TemperaturePressure { t, p, ts } => {
+                            Message {
+                                temp: t,
+                                pressure: p,
+                                timestamp: ts,
+                            }
+                        }
+                    });
+                    if v.len() == batch_size {
+                        break;
+                    }
+                } else {
+                    info!("No data received for {:?}. Current queue size: {}",
+                          max_timeout,
+                          current_batch);
+                    break;
+                }
+            }
+            if v.len() > 0 {
+                self.send_bulk(v);
+                current_batch = 0;
+            }
         }
     }
 }
@@ -99,5 +146,5 @@ impl SensorDataConsumer for Client {
 pub struct Message {
     pub temp: f32,
     pub pressure: f32,
-    pub timestamp: i64
+    pub timestamp: i64,
 }

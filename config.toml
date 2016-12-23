@@ -5,3 +5,6 @@ secret = "asdf" # JWT secret
 [sensors]
 sampling_rate = 1000 # Sensor reading timeout. Default: 1000
 temperature_barometer_addr = "/dev/i2c-1" # /dev address for the bmp085 sensor
+
+[settings]
+server_address = "http://localhost:6200" # Eden-server address
