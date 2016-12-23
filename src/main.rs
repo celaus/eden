@@ -1,16 +1,18 @@
-#![feature(custom_derive, plugin, associated_consts,  custom_attribute)]
+#![feature(plugin, custom_attribute, proc_macro)]
 #![plugin(docopt_macros)]
 
 extern crate chrono;
 extern crate toml;
-extern crate rustc_serialize;
 #[macro_use]
 extern crate mioco;
+#[macro_use]
+extern crate serde_derive;
 #[macro_use]
 extern crate log;
 extern crate log4rs;
 extern crate bmp085;
 extern crate i2cdev;
+
 
 use bmp085::*;
 use i2cdev::linux::*;
@@ -24,7 +26,7 @@ use std::sync::mpsc::channel;
 use std::thread;
 
 mod client;
-use client::{Client, SensorDataConsumer, EdenClientConfig};
+use client::{Client, SensorDataConsumer, EdenClientConfig, EdenServerEndpoint};
 
 #[derive(Debug)]
 pub enum SensorReading {
@@ -49,7 +51,19 @@ fn read_config<T: Read + Sized>(mut f: T) -> Result<EdenClientConfig, io::Error>
         .as_str()
         .unwrap()
         .to_owned();
-    return Ok(EdenClientConfig::new(secret, raw_addr));
+
+    let temperature_barometer_addr = root.lookup("sensors.temperature_barometer_addr")
+        .unwrap_or(&Value::String("/dev/i2c-1".to_owned()))
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    let sampling_rate = root.lookup("sensors.sampling_rate")
+        .unwrap_or(&Value::Integer(1000))
+        .as_integer()
+        .unwrap() as u64;
+
+    return Ok(EdenClientConfig::new(secret, raw_addr, temperature_barometer_addr, sampling_rate));
 }
 
 
@@ -59,17 +73,18 @@ fn main() {
 
     let mut f = File::open("./config.toml").unwrap();
     let o = read_config(&mut f).unwrap();
+    let sampling_rate = o.sampling_rate;
 
     info!("Initializing devices");
-    let i2c_dev = LinuxI2CDevice::new("/dev/i2c-1", BMP085_I2C_ADDR).unwrap();
+    let i2c_dev = LinuxI2CDevice::new(o.temperature_barometer_addr.clone(), BMP085_I2C_ADDR).unwrap();
     let mut temperature_barometer = BMP085BarometerThermometer::new(i2c_dev, SamplingMode::Standard).unwrap();
 
     info!("Starting Eden");
     let client = Client::new(o).unwrap();
 
-    let (tx, rx) = channel::<SensorReading>();
+    let (tx, rx) = channel::<(EdenServerEndpoint, SensorReading)>();
 
-    let guard = thread::spawn(move || {
+    thread::spawn(move || {
         client.attach(rx);
     });
 
@@ -77,14 +92,14 @@ fn main() {
             info!("Starting Event Loop");
             loop {
                 let mut timer = mioco::timer::Timer::new();
-                timer.set_timeout(1000);
+                timer.set_timeout(sampling_rate);
                 select!(
                 r:timer => {
                     let temp = SensorReading::TemperaturePressure {
                         t: temperature_barometer.temperature_celsius().unwrap(),
                         p: temperature_barometer.pressure_kpa().unwrap()
                     };
-                    tx.send(temp);
+                    tx.send((EdenServerEndpoint::Temperature, temp));
                 });
             }
         })

@@ -1,4 +1,7 @@
 extern crate ease;
+extern crate simple_jwt;
+extern crate hyper;
+
 
 extern crate serde_json;
 
@@ -6,78 +9,92 @@ use std::collections::HashMap;
 use self::ease::{Url, Request};
 use std::sync::mpsc::Receiver;
 use std::str::FromStr;
+use self::hyper::header::{Authorization, Bearer};
+use self::simple_jwt::{encode, Claim, Algorithm};
 
 use SensorReading;
 use std::error::Error;
 use std::io;
 
-
+#[derive(Debug)]
 pub struct EdenClientConfig {
-    server_address: String,
+    pub server_address: String,
     secret: String,
+    pub temperature_barometer_addr: String,
+    pub sampling_rate: u64,
 }
 
+#[derive(Debug)]
 pub enum EdenServerEndpoint {
     Temperature,
 }
 
 impl EdenClientConfig {
-    pub fn new(secret: String, address: String) -> EdenClientConfig {
+    pub fn new(secret: String, address: String, temperature_barometer_addr: String, sampling_rate: u64) -> EdenClientConfig {
         EdenClientConfig {
             server_address: address,
             secret: secret,
+            temperature_barometer_addr: temperature_barometer_addr,
+            sampling_rate: sampling_rate
         }
     }
 }
 
-#[derive(Deserialize, Debug)]
-struct PostResponse {
-    args: HashMap<String, String>,
-    data: Option<String>,
-    files: Option<HashMap<String, String>>,
-    form: Option<HashMap<String, String>>,
-    headers: HashMap<String, String>,
-    json: Option<String>,
-    origin: String,
-    url: String,
-}
-
 pub trait SensorDataConsumer {
-    fn attach(&self, data: Receiver<SensorReading>);
+    fn attach(&self, data: Receiver<(EdenServerEndpoint, SensorReading)>);
 }
 
 pub struct Client {
-    config: EdenClientConfig,
     parsed_address: Url,
+    jwt: String,
 }
 
 impl Client {
     pub fn new(config: EdenClientConfig) -> Result<Client, String> {
         let u = try!(Url::parse(&config.server_address).map_err(|e| e.description().to_owned()));
+
+        let mut claim = Claim::default();
+        claim.set_iss("pi");
+        claim.set_payload_field("role", "sensor");
+        let token = encode(&claim, &config.secret, Algorithm::HS256).unwrap();
+
         Ok(Client {
-            config: config,
             parsed_address: u,
+            jwt: token,
         })
     }
 
     pub fn send(&self,
                 endpoint: EdenServerEndpoint,
-                payload: SensorReading)
+                payload: EdenMessage)
                 -> Result<(), io::Error> {
         let path = match endpoint {
             EdenServerEndpoint::Temperature => "temperature".to_string(),
         };
-        println!("{:#?}", Request::new(self.parsed_address.clone()).post());
+        let body = serde_json::to_string(&payload).unwrap();
+        info!("Sending: {}", body);
+        println!("{:#?}",
+                 Request::new(self.parsed_address.clone())
+                     .header(Authorization(Bearer { token: self.jwt.clone() }))
+                     .body(body)
+                     .post().unwrap());
         return Ok(());
-        // .and_then(|res| res.from_json::<PostResponse>()));
     }
 }
 
 impl SensorDataConsumer for Client {
-    fn attach(&self, data: Receiver<SensorReading>) {
+    fn attach(&self, data: Receiver<(EdenServerEndpoint, SensorReading)>) {
         while let Ok(msg) = data.recv() {
             info!("Sending {:?}", msg);
-            self.send(EdenServerEndpoint::Temperature, msg);
+            let reading = match msg.1 {
+                SensorReading::TemperaturePressure{ t: t, p: p} => EdenMessage::TempPressureReading { temp: t, pressure: p }
+            };
+            self.send(msg.0, reading);
         }
     }
+}
+
+#[derive(Serialize, Debug)]
+enum EdenMessage {
+    TempPressureReading { temp: f32, pressure: f32 }
 }
