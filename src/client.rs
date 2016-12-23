@@ -66,7 +66,7 @@ impl Client {
 
     pub fn send(&self,
                 endpoint: EdenServerEndpoint,
-                payload: EdenMessage)
+                payload: Message)
                 -> Result<(), io::Error> {
         let path = match endpoint {
             EdenServerEndpoint::Temperature => "temperature".to_string(),
@@ -88,14 +88,16 @@ impl SensorDataConsumer for Client {
         while let Ok(msg) = data.recv() {
             info!("Sending {:?}", msg);
             let reading = match msg.1 {
-                SensorReading::TemperaturePressure{ t: t, p: p, ts: ts} => EdenMessage::TempPressureReading { temp: t, pressure: p, timestamp: ts }
+                SensorReading::TemperaturePressure{ t: t, p: p, ts: ts} => Message { temp: t, pressure: p, timestamp: ts }
             };
             self.send(msg.0, reading);
         }
     }
 }
 
-#[derive(Serialize, Debug)]
-enum EdenMessage {
-    TempPressureReading { temp: f32, pressure: f32, timestamp: i64 }
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Message {
+    pub temp: f32,
+    pub pressure: f32,
+    pub timestamp: i64
 }
