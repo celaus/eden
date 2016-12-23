@@ -73,8 +73,9 @@ impl Client {
         };
         let body = serde_json::to_string(&payload).unwrap();
         info!("Sending: {}", body);
-        println!("{:#?}",
-                 Request::new(self.parsed_address.clone())
+        let url = self.parsed_address.clone().join(&path).unwrap();
+        info!("{:#?}",
+                 Request::new(url)
                      .header(Authorization(Bearer { token: self.jwt.clone() }))
                      .body(body)
                      .post().unwrap());
