@@ -14,7 +14,6 @@
 
 
 #![feature(plugin, custom_attribute)]
-#![plugin(docopt_macros)]
 
 extern crate clap;
 extern crate chrono;

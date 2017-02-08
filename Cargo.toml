@@ -15,7 +15,6 @@ ease = "*"
 hyper = "*"
 log4rs = { version = "*", features = ["serde_yaml"] }
 log = "*"
-docopt_macros = "*"
 chrono = "*"
 toml = "*"
 mioco = "*"
