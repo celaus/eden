@@ -11,35 +11,33 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
 extern crate toml;
 extern crate serde;
 
-use std::error::Error;
-use std::fmt::{self, Debug};
-use std::io;
+use error::ConfigError;
+use std::io::Read;
 
-#[derive(Debug)]
-pub enum ConfigError {
-    Io(io::Error),
-    Parse(toml::de::Error)
+#[derive(Deserialize)]
+pub struct Settings {
+    pub sensors: Sensors,
+    pub server: Server,
+}
+
+#[derive(Deserialize)]
+pub struct Sensors {
+    pub sampling_rate: u64,
+    pub temperature_barometer_addr: String,
+}
+
+#[derive(Deserialize)]
+pub struct Server {
+    pub address: String,
+    pub secret: String,
 }
 
 
-#[derive(Debug)]
-pub struct EdenServerError {
-    pub description: String,
-}
-
-impl fmt::Display for EdenServerError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        Debug::fmt(&self.description, f)
-    }
-}
-
-
-impl Error for EdenServerError {
-    fn description(&self) -> &str {
-        &*self.description
-    }
+pub fn read_config<T: Read + Sized>(mut f: T) -> Result<Settings, ConfigError> {
+    let mut buffer = String::new();
+    try!(f.read_to_string(&mut buffer).map_err(|e| ConfigError::Io(e)));
+    toml::from_str(&buffer).map_err(|e| ConfigError::Parse(e))
 }

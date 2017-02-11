@@ -13,51 +13,30 @@
 // limitations under the License.
 
 
-extern crate ease;
 extern crate simple_jwt;
 extern crate hyper;
+extern crate serde;
 extern crate serde_json;
 extern crate threadpool;
 use std::time::Duration;
 
-
-use self::ease::{Url, Request};
+use self::hyper::Url;
+use self::hyper::client::{Client as HyperClient, IntoUrl};
 use std::sync::mpsc::Receiver;
 use self::hyper::header::{Authorization, Bearer, ContentType, ContentLength};
 use self::simple_jwt::{encode, Claim, Algorithm};
 use self::hyper::mime::{Mime, TopLevel, SubLevel, Attr, Value};
 use self::threadpool::ThreadPool;
-
+use std::sync::Arc;
 use std::error::Error;
 use SensorReading;
 
-#[derive(Debug)]
-pub struct EdenClientConfig {
-    pub server_address: String,
-    secret: String,
-    pub temperature_barometer_addr: String,
-    pub sampling_rate: u64,
-}
 
 #[derive(Debug)]
 pub enum EdenServerEndpoint {
     Temperature,
 }
 
-impl EdenClientConfig {
-    pub fn new(secret: String,
-               address: String,
-               temperature_barometer_addr: String,
-               sampling_rate: u64)
-               -> EdenClientConfig {
-        EdenClientConfig {
-            server_address: address,
-            secret: secret,
-            temperature_barometer_addr: temperature_barometer_addr,
-            sampling_rate: sampling_rate,
-        }
-    }
-}
 
 pub trait SensorDataConsumer {
     fn attach(&self, data: Receiver<SensorReading>, batch_size: usize);
@@ -68,24 +47,26 @@ pub struct Client {
     jwt: String,
     sender_pool: ThreadPool,
     endpoint: EdenServerEndpoint,
+    client: Arc<HyperClient>,
 }
 
 impl Client {
-    pub fn new(config: EdenClientConfig, endpoint: EdenServerEndpoint) -> Result<Client, String> {
-        let u = try!(Url::parse(&config.server_address).map_err(|e| e.description().to_owned()));
+    pub fn new<U: IntoUrl>(address: U, pool_size: usize, secret: String, endpoint: EdenServerEndpoint) -> Result<Client, String> {
+        let u = try!(address.into_url().map_err(|e| e.description().to_owned()));
 
         let mut claim = Claim::default();
         claim.set_iss("pi");
         claim.set_payload_field("role", "sensor");
-        let token = encode(&claim, &config.secret, Algorithm::HS256).unwrap();
+        let token = encode(&claim, &secret, Algorithm::HS256).unwrap();
 
-        let pool = ThreadPool::new(4);
-
+        let pool = ThreadPool::new(pool_size);
+        let client = Arc::new(HyperClient::new());
         Ok(Client {
             parsed_address: u,
             jwt: token,
             sender_pool: pool,
             endpoint: endpoint,
+            client: client
         })
     }
 
@@ -99,16 +80,16 @@ impl Client {
         let url = self.parsed_address.clone().join(&path).unwrap();
         let token = self.jwt.clone();
         let send_to = url.clone();
-
+        let client = self.client.clone();
         self.sender_pool.execute(move || {
-            match Request::new(send_to)
+            match client.post(send_to)
                 .header(ContentLength(body.len() as u64))
                 .header(ContentType(Mime(TopLevel::Application,
                                          SubLevel::Json,
                                          vec![(Attr::Charset, Value::Utf8)])))
                 .header(Authorization(Bearer { token: token }))
-                .body(body)
-                .post() {
+                .body(&body)
+                .send() {
                 Ok(_) => (),//Ok(()),
                 Err(e) => {
                     warn!("Endpoint '{}' returned an error: {:?}", url, e);
