@@ -22,6 +22,7 @@ use std::io::Read;
 pub struct Settings {
     pub sensors: Sensors,
     pub server: Server,
+    pub device: Agent,
 }
 
 #[derive(Deserialize)]
@@ -35,6 +36,11 @@ pub struct Sensors {
 pub struct Server {
     pub address: String,
     pub secret: String,
+}
+
+#[derive(Deserialize)]
+pub struct Agent {
+    pub name: String,
 }
 
 

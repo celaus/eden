@@ -44,6 +44,7 @@ pub trait SensorDataConsumer {
 
 pub struct Client {
     parsed_address: Url,
+    agent: String,
     jwt: String,
     sender_pool: ThreadPool,
     endpoint: EdenServerEndpoint,
@@ -51,11 +52,11 @@ pub struct Client {
 }
 
 impl Client {
-    pub fn new<U: IntoUrl>(address: U, pool_size: usize, secret: String, endpoint: EdenServerEndpoint) -> Result<Client, String> {
+    pub fn new<U: IntoUrl>(address: U, pool_size: usize, secret: String, endpoint: EdenServerEndpoint, agent: String) -> Result<Client, String> {
         let u = try!(address.into_url().map_err(|e| e.description().to_owned()));
 
         let mut claim = Claim::default();
-        claim.set_iss("pi");
+        claim.set_iss(agent);
         claim.set_payload_field("role", "sensor");
         let token = encode(&claim, &secret, Algorithm::HS256).unwrap();
 
@@ -112,9 +113,9 @@ impl SensorDataConsumer for Client {
             loop {
                 if let Ok(msg) = data.recv_timeout(max_timeout) {
                     v.push(match msg {
-                        SensorReading::TemperaturePressure { name, t, p, ts } => {
+                        SensorReading::TemperaturePressure { sensor, t, p, ts } => {
                             Message {
-                                name: name,
+                                sensor: sensor,
                                 temp: t,
                                 pressure: p,
                                 timestamp: ts,
@@ -141,7 +142,7 @@ impl SensorDataConsumer for Client {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
-    pub name: String,
+    pub sensor: String,
     pub temp: f32,
     pub pressure: f32,
     pub timestamp: i64,

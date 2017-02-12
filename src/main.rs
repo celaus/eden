@@ -44,7 +44,7 @@ use clap::{Arg, App};
 #[derive(Debug)]
 pub enum SensorReading {
     TemperaturePressure {
-        name: String,
+        sensor: String,
         t: f32,
         p: f32,
         ts: i64,
@@ -91,6 +91,7 @@ fn main() {
     let client = Client::new(&settings.server.address,
                              4usize,
                              settings.server.secret.clone(),
+                             settings.agent.name.clone(),
                              EdenServerEndpoint::Temperature)
         .unwrap();
 
@@ -110,7 +111,7 @@ fn main() {
                     let now = UTC::now();
                     let now_ms = now.timestamp() * 1000 + (now.timestamp_subsec_millis() as i64);
                     let temp = SensorReading::TemperaturePressure {
-                        name: settings.sensors.temperature_barometer_name.clone(),
+                        sensor: settings.sensors.temperature_barometer_name.clone(),
                         t: temperature_barometer.temperature_celsius().unwrap(),
                         p: temperature_barometer.pressure_kpa().unwrap(),
                         ts: now_ms
