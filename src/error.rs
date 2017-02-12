@@ -13,7 +13,6 @@
 // limitations under the License.
 
 extern crate toml;
-extern crate serde;
 
 use std::error::Error;
 use std::fmt::{self, Debug};
