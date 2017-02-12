@@ -11,6 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+
 extern crate toml;
 extern crate serde;
 
@@ -27,6 +28,7 @@ pub struct Settings {
 pub struct Sensors {
     pub sampling_rate: u64,
     pub temperature_barometer_addr: String,
+    pub temperature_barometer_name: String,
 }
 
 #[derive(Deserialize)]
@@ -38,6 +40,6 @@ pub struct Server {
 
 pub fn read_config<T: Read + Sized>(mut f: T) -> Result<Settings, ConfigError> {
     let mut buffer = String::new();
-    try!(f.read_to_string(&mut buffer).map_err(|e| ConfigError::Io(e)));
-    toml::from_str(&buffer).map_err(|e| ConfigError::Parse(e))
+    try!(f.read_to_string(&mut buffer).map_err(ConfigError::Io));
+    toml::from_str(&buffer).map_err(ConfigError::Parse)
 }

@@ -44,6 +44,7 @@ use clap::{Arg, App};
 #[derive(Debug)]
 pub enum SensorReading {
     TemperaturePressure {
+        name: String,
         t: f32,
         p: f32,
         ts: i64,
@@ -103,12 +104,13 @@ fn main() {
             info!("Starting Event Loop");
             loop {
                 let mut timer = mioco::timer::Timer::new();
-                timer.set_timeout(settings.sensors.sampling_rate);
+                timer.set_timeout(settings.sensors.sampling_rate.clone());
                 select!(
                 r:timer => {
                     let now = UTC::now();
                     let now_ms = now.timestamp() * 1000 + (now.timestamp_subsec_millis() as i64);
                     let temp = SensorReading::TemperaturePressure {
+                        name: settings.sensors.temperature_barometer_name.clone(),
                         t: temperature_barometer.temperature_celsius().unwrap(),
                         p: temperature_barometer.pressure_kpa().unwrap(),
                         ts: now_ms

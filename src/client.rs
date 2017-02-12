@@ -112,8 +112,9 @@ impl SensorDataConsumer for Client {
             loop {
                 if let Ok(msg) = data.recv_timeout(max_timeout) {
                     v.push(match msg {
-                        SensorReading::TemperaturePressure { t, p, ts } => {
+                        SensorReading::TemperaturePressure { name, t, p, ts } => {
                             Message {
+                                name: name,
                                 temp: t,
                                 pressure: p,
                                 timestamp: ts,
@@ -140,6 +141,7 @@ impl SensorDataConsumer for Client {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
+    pub name: String,
     pub temp: f32,
     pub pressure: f32,
     pub timestamp: i64,
