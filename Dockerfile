@@ -9,4 +9,5 @@ VOLUME ["/sensors"]
 
 ENV PATH /eden:$PATH
 
-CMD ["eden", "-c /eden/config.toml", "-l /eden/logging.yml"]
+WORKDIR /eden
+CMD ["eden"]
