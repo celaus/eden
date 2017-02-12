@@ -8,7 +8,7 @@ Eden is an IoT use case for monitoring temperature data off a Raspberry Pi.
 
 ## Requirements
 
-A [BMP085 or BMP180](/celaus/bmp085) temperature sensor and barometer, connected via i2c to a Linux device 🤔
+A [BMP085 or BMP180](https://github.com/celaus/bmp085) temperature sensor and barometer, connected via i2c to a Linux device 🤔
 
 ## Using Docker
 
