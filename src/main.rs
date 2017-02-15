@@ -91,8 +91,8 @@ fn main() {
     let client = Client::new(&settings.server.address,
                              4usize,
                              settings.server.secret.clone(),
-                             settings.agent.name.clone(),
-                             EdenServerEndpoint::Temperature)
+                             EdenServerEndpoint::Temperature,
+                             settings.device.name.clone())
         .unwrap();
 
     let (tx, rx) = channel::<SensorReading>();

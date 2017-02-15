@@ -82,7 +82,7 @@ impl Client {
         let u = try!(address.into_url().map_err(|e| e.description().to_owned()));
 
         let mut claim = Claim::default();
-        claim.set_iss(agent);
+        claim.set_iss(&agent);
         claim.set_payload_field("role", "sensor");
         let token = encode(&claim, &secret, Algorithm::HS256).unwrap();
 
@@ -90,6 +90,7 @@ impl Client {
         let client = Arc::new(HyperClient::new());
         Ok(Client {
             parsed_address: u,
+            agent: agent,
             jwt: token,
             sender_pool: pool,
             endpoint: endpoint,
@@ -143,12 +144,12 @@ impl SensorDataConsumer for Client {
                             Message {
                                 meta: MetaData { name: sensor },
                                 data: vec![Measurement {
-                                               value: t,
+                                               value: t as f64,
                                                unit: "celsius".to_string(),
                                                sensor: "temperature".to_string(),
                                            },
                                            Measurement {
-                                               value: p,
+                                               value: p as f64,
                                                unit: "kilopascal".to_string(),
                                                sensor: "barometer".to_string(),
                                            }],
