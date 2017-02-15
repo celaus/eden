@@ -7,5 +7,5 @@ temperature_barometer_name = "Adafruit BMP180" # Name, meta data
 address = "http://localhost:6200" # Eden-server address
 secret = "asdf" # JWT secret
 
-[agent]
+[device]
 name = "Raspberry 1" # A device identifier
