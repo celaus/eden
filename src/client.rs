@@ -32,6 +32,27 @@ use std::error::Error;
 use SensorReading;
 
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Message {
+    pub meta: MetaData,
+    pub data: Vec<Measurement>,
+    pub timestamp: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Measurement {
+    pub sensor: String,
+    pub value: f64,
+    pub unit: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetaData {
+    pub name: String,
+}
+
+
+
 #[derive(Debug)]
 pub enum EdenServerEndpoint {
     Temperature,
@@ -52,7 +73,12 @@ pub struct Client {
 }
 
 impl Client {
-    pub fn new<U: IntoUrl>(address: U, pool_size: usize, secret: String, endpoint: EdenServerEndpoint, agent: String) -> Result<Client, String> {
+    pub fn new<U: IntoUrl>(address: U,
+                           pool_size: usize,
+                           secret: String,
+                           endpoint: EdenServerEndpoint,
+                           agent: String)
+                           -> Result<Client, String> {
         let u = try!(address.into_url().map_err(|e| e.description().to_owned()));
 
         let mut claim = Claim::default();
@@ -67,7 +93,7 @@ impl Client {
             jwt: token,
             sender_pool: pool,
             endpoint: endpoint,
-            client: client
+            client: client,
         })
     }
 
@@ -115,9 +141,17 @@ impl SensorDataConsumer for Client {
                     v.push(match msg {
                         SensorReading::TemperaturePressure { sensor, t, p, ts } => {
                             Message {
-                                sensor: sensor,
-                                temp: t,
-                                pressure: p,
+                                meta: MetaData { name: sensor },
+                                data: vec![Measurement {
+                                               value: t,
+                                               unit: "celsius".to_string(),
+                                               sensor: "temperature".to_string(),
+                                           },
+                                           Measurement {
+                                               value: p,
+                                               unit: "kilopascal".to_string(),
+                                               sensor: "barometer".to_string(),
+                                           }],
                                 timestamp: ts,
                             }
                         }
@@ -138,12 +172,4 @@ impl SensorDataConsumer for Client {
             }
         }
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Message {
-    pub sensor: String,
-    pub temp: f32,
-    pub pressure: f32,
-    pub timestamp: i64,
 }
