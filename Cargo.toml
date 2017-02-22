@@ -12,6 +12,7 @@ i2cdev = "*"
 clap = "*"
 bmp085 = "0.1.1"
 hyper = "^0.10.4"
+hyper-rustls = "^0.3.2"
 log4rs = { version = "*", features = ["serde_yaml"] }
 log = "*"
 chrono = "*"

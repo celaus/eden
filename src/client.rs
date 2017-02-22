@@ -15,6 +15,7 @@
 
 extern crate simple_jwt;
 extern crate hyper;
+extern crate hyper_rustls;
 extern crate serde;
 extern crate serde_json;
 extern crate threadpool;
@@ -22,6 +23,8 @@ use std::time::Duration;
 
 use self::hyper::Url;
 use self::hyper::client::{Client as HyperClient, IntoUrl};
+use self::hyper::net::{HttpConnector, HttpsConnector};
+use self::hyper_rustls::TlsClient;
 use std::sync::mpsc::Receiver;
 use self::hyper::header::{Authorization, Bearer, ContentType, ContentLength};
 use self::simple_jwt::{encode, Claim, Algorithm};
@@ -87,7 +90,12 @@ impl Client {
         let token = encode(&claim, &secret, Algorithm::HS256).unwrap();
 
         let pool = ThreadPool::new(pool_size);
-        let client = Arc::new(HyperClient::new());
+        let hyper_client = match u.scheme() {
+            "http" => HyperClient::with_connector(HttpConnector{}),
+            "https" => HyperClient::with_connector(HttpsConnector::new(TlsClient::new())),
+            _ => return Err("Unknown URL scheme".to_string())
+        };
+        let client = Arc::new(hyper_client);
         Ok(Client {
             parsed_address: u,
             agent: agent,
