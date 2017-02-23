@@ -27,6 +27,7 @@ extern crate i2cdev;
 mod client;
 mod error;
 mod config;
+mod auth;
 
 use bmp085::*;
 use i2cdev::linux::*;

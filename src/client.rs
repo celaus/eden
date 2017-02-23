@@ -13,7 +13,6 @@
 // limitations under the License.
 
 
-extern crate simple_jwt;
 extern crate hyper;
 extern crate hyper_rustls;
 extern crate serde;
@@ -27,12 +26,12 @@ use self::hyper::net::{HttpConnector, HttpsConnector};
 use self::hyper_rustls::TlsClient;
 use std::sync::mpsc::Receiver;
 use self::hyper::header::{Authorization, Bearer, ContentType, ContentLength};
-use self::simple_jwt::{encode, Claim, Algorithm};
 use self::hyper::mime::{Mime, TopLevel, SubLevel, Attr, Value};
 use self::threadpool::ThreadPool;
 use std::sync::Arc;
 use std::error::Error;
 use SensorReading;
+use auth::get_token;
 
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -68,7 +67,6 @@ pub trait SensorDataConsumer {
 
 pub struct Client {
     parsed_address: Url,
-    agent: String,
     jwt: String,
     sender_pool: ThreadPool,
     endpoint: EdenServerEndpoint,
@@ -84,21 +82,17 @@ impl Client {
                            -> Result<Client, String> {
         let u = try!(address.into_url().map_err(|e| e.description().to_owned()));
 
-        let mut claim = Claim::default();
-        claim.set_iss(&agent);
-        claim.set_payload_field("role", "sensor");
-        let token = encode(&claim, &secret, Algorithm::HS256).unwrap();
+        let token = try!(get_token(agent, "sensor", secret).map_err(|_| "Could not generate auth token".to_string()));
 
         let pool = ThreadPool::new(pool_size);
         let hyper_client = match u.scheme() {
-            "http" => HyperClient::with_connector(HttpConnector{}),
+            "http" => HyperClient::with_connector(HttpConnector {}),
             "https" => HyperClient::with_connector(HttpsConnector::new(TlsClient::new())),
-            _ => return Err("Unknown URL scheme".to_string())
+            _ => return Err("Unknown URL scheme".to_string()),
         };
         let client = Arc::new(hyper_client);
         Ok(Client {
             parsed_address: u,
-            agent: agent,
             jwt: token,
             sender_pool: pool,
             endpoint: endpoint,
@@ -129,7 +123,6 @@ impl Client {
                 Ok(_) => (),//Ok(()),
                 Err(e) => {
                     warn!("Endpoint '{}' returned an error: {:?}", url, e);
-                    // Err(EdenServerError { description: e.description().to_owned() })
                 }
             }
         });

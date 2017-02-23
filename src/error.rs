@@ -13,32 +13,10 @@
 // limitations under the License.
 
 extern crate toml;
-
-use std::error::Error;
-use std::fmt::{self, Debug};
 use std::io;
 
 #[derive(Debug)]
 pub enum ConfigError {
     Io(io::Error),
     Parse(toml::de::Error)
-}
-
-
-#[derive(Debug)]
-pub struct EdenServerError {
-    pub description: String,
-}
-
-impl fmt::Display for EdenServerError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        Debug::fmt(&self.description, f)
-    }
-}
-
-
-impl Error for EdenServerError {
-    fn description(&self) -> &str {
-        &*self.description
-    }
 }
