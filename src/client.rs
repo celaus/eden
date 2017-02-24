@@ -105,7 +105,7 @@ impl Client {
             EdenServerEndpoint::Temperature => "temperature".to_string(),
         };
         let body = serde_json::to_string(&payload).unwrap();
-        info!("Sending: {}", body);
+        debug!("Sending: {}", body);
 
         let url = self.parsed_address.clone().join(&path).unwrap();
         let token = self.jwt.clone();
