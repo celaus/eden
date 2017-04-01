@@ -12,13 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+extern crate jsonwebtoken as jwt;
 
-extern crate medallion;
-use std::default::Default;
-use self::medallion::{DefaultHeader, Token};
-use self::medallion::error::Error;
+use self::jwt::{encode, Header};
+use self::jwt::errors::Error;
 
-#[derive(Default, Serialize, Deserialize)]
+#[derive(RustcEncodable, RustcDecodable)]
 struct Claims {
     iss: String,
     role: String,
@@ -34,7 +33,5 @@ pub fn get_token<I, R, S>(issuer: I, role: R, secret: S) -> Result<String, Error
         iss: issuer.into(),
         role: role.into(),
     };
-    let header: DefaultHeader = Default::default();
-    let token = Token::new(header, claims);
-    token.signed(secret.into().as_bytes())
+    encode(Header::default(), &claims, &secret.into().as_bytes())
 }

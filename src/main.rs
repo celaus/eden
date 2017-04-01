@@ -23,6 +23,8 @@ extern crate log;
 extern crate log4rs;
 extern crate bmp085;
 extern crate i2cdev;
+extern crate rustc_serialize;
+
 
 mod client;
 mod error;
