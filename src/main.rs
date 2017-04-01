@@ -36,10 +36,11 @@ use i2cdev::sensors::{Barometer, Thermometer};
 use std::fs::File;
 use std::sync::mpsc::channel;
 use std::thread;
-use chrono::*;
+use std::time::Duration;
+use chrono::UTC;
 use config::{Settings, read_config};
 
-use client::{Client, SensorDataConsumer, EdenServerEndpoint};
+use client::{Client, SensorDataConsumer};
 use clap::{Arg, App};
 
 #[derive(Debug)]
@@ -89,17 +90,16 @@ fn main() {
         BMP085BarometerThermometer::new(i2c_dev, SamplingMode::Standard).unwrap();
 
     info!("Starting Eden");
-    let client = Client::new(&settings.server.address,
+    let client = Client::new(&settings.server.endpoint,
                              4usize,
                              settings.server.secret.clone(),
-                             EdenServerEndpoint::Temperature,
                              settings.device.name.clone())
         .unwrap();
 
     let (tx, rx) = channel::<SensorReading>();
-
+    let timeout = settings.sensors.timeout;
     let dispatcher = thread::spawn(move || {
-        client.attach(rx, 100);
+        client.attach(rx, 100, Duration::from_secs(timeout));
     });
 
     mioco::start(move || {

@@ -17,7 +17,7 @@ extern crate hyper;
 extern crate hyper_rustls;
 extern crate serde;
 extern crate serde_json;
-extern crate threadpool;
+extern crate scoped_pool;
 use std::time::Duration;
 
 use self::hyper::Url;
@@ -27,7 +27,7 @@ use self::hyper_rustls::TlsClient;
 use std::sync::mpsc::Receiver;
 use self::hyper::header::{Authorization, Bearer, ContentType, ContentLength};
 use self::hyper::mime::{Mime, TopLevel, SubLevel, Attr, Value};
-use self::threadpool::ThreadPool;
+use self::scoped_pool::Pool;
 use std::sync::Arc;
 use std::error::Error;
 use SensorReading;
@@ -54,37 +54,29 @@ pub struct MetaData {
 }
 
 
-
-#[derive(Debug)]
-pub enum EdenServerEndpoint {
-    Temperature,
-}
-
-
 pub trait SensorDataConsumer {
-    fn attach(&self, data: Receiver<SensorReading>, batch_size: usize);
+    fn attach(&self, data: Receiver<SensorReading>, batch_size: usize, max_timeout: Duration);
 }
 
 pub struct Client {
-    parsed_address: Url,
+    endpoint: Url,
     jwt: String,
-    sender_pool: ThreadPool,
-    endpoint: EdenServerEndpoint,
+    sender_pool: Pool,
     client: Arc<HyperClient>,
 }
 
 impl Client {
-    pub fn new<U: IntoUrl>(address: U,
+    pub fn new<U: IntoUrl>(endpoint: U,
                            pool_size: usize,
                            secret: String,
-                           endpoint: EdenServerEndpoint,
                            agent: String)
                            -> Result<Client, String> {
-        let u = try!(address.into_url().map_err(|e| e.description().to_owned()));
+        let u = try!(endpoint.into_url().map_err(|e| e.description().to_owned()));
 
-        let token = try!(get_token(agent, "sensor", secret).map_err(|_| "Could not generate auth token".to_string()));
+        let token = try!(get_token(agent, "sensor", secret)
+            .map_err(|_| "Could not generate auth token".to_string()));
 
-        let pool = ThreadPool::new(pool_size);
+        let pool = Pool::new(pool_size);
         let hyper_client = match u.scheme() {
             "http" => HyperClient::with_connector(HttpConnector {}),
             "https" => HyperClient::with_connector(HttpsConnector::new(TlsClient::new())),
@@ -92,49 +84,43 @@ impl Client {
         };
         let client = Arc::new(hyper_client);
         Ok(Client {
-            parsed_address: u,
+            endpoint: u,
             jwt: token,
             sender_pool: pool,
-            endpoint: endpoint,
             client: client,
         })
     }
 
     pub fn send_bulk(&self, payload: Vec<Message>) {
-        let path = match self.endpoint {
-            EdenServerEndpoint::Temperature => "temperature".to_string(),
-        };
+
         let body = serde_json::to_string(&payload).unwrap();
         debug!("Sending: {}", body);
+        self.sender_pool.scoped(|scope| {
+            let send_to = self.endpoint.clone();
+            let token = self.jwt.clone();
+            let ref client = self.client;
 
-        let url = self.parsed_address.clone().join(&path).unwrap();
-        let token = self.jwt.clone();
-        let send_to = url.clone();
-        let client = self.client.clone();
-        self.sender_pool.execute(move || {
-            match client.post(send_to)
-                .header(ContentLength(body.len() as u64))
-                .header(ContentType(Mime(TopLevel::Application,
-                                         SubLevel::Json,
-                                         vec![(Attr::Charset, Value::Utf8)])))
-                .header(Authorization(Bearer { token: token }))
-                .body(&body)
-                .send() {
-                Ok(_) => (),//Ok(()),
-                Err(e) => {
-                    warn!("Endpoint '{}' returned an error: {:?}", url, e);
+            scope.execute(move || {
+                match client.post(send_to)
+                    .header(ContentLength(body.len() as u64))
+                    .header(ContentType(Mime(TopLevel::Application,
+                                             SubLevel::Json,
+                                             vec![(Attr::Charset, Value::Utf8)])))
+                    .header(Authorization(Bearer { token: token }))
+                    .body(&body)
+                    .send() {
+                    Ok(_) => (),//Ok(()),
+                    Err(e) => {
+                        warn!("Endpoint '{}' returned an error: {:?}", self.endpoint, e);
+                    }
                 }
-            }
+            });
         });
     }
 }
 
 impl SensorDataConsumer for Client {
-    fn attach(&self, data: Receiver<SensorReading>, batch_size: usize) {
-        let mut current_batch = 0;
-
-        let max_timeout = Duration::from_secs(90);
-
+    fn attach(&self, data: Receiver<SensorReading>, batch_size: usize, max_timeout: Duration) {
         loop {
             let mut v: Vec<Message> = Vec::with_capacity(batch_size);
 
@@ -164,13 +150,12 @@ impl SensorDataConsumer for Client {
                 } else {
                     info!("No data received for {:?}. Current queue size: {}",
                           max_timeout,
-                          current_batch);
-                    break;
+                          v.len());
+                    break; // send!
                 }
             }
             if v.len() > 0 {
                 self.send_bulk(v);
-                current_batch = 0;
             }
         }
     }

@@ -30,11 +30,12 @@ pub struct Sensors {
     pub sampling_rate: u64,
     pub temperature_barometer_addr: String,
     pub temperature_barometer_name: String,
+    pub timeout: u64,
 }
 
 #[derive(Deserialize)]
 pub struct Server {
-    pub address: String,
+    pub endpoint: String,
     pub secret: String,
 }
 
