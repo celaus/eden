@@ -12,11 +12,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-extern crate toml;
-use std::io;
+extern crate jsonwebtoken as jwt;
 
-#[derive(Debug)]
-pub enum ConfigError {
-    Io(io::Error),
-    Parse(toml::de::Error)
+use self::jwt::{encode, Header};
+use self::jwt::errors::Error;
+
+#[derive(Serialize, Deserialize)]
+struct Claims {
+    iss: String,
+    role: String,
+}
+
+
+pub fn get_token<I, R, S>(issuer: I, role: R, secret: S) -> Result<String, Error>
+    where I: Into<String>,
+          R: Into<String>,
+          S: Into<String>
+{
+    let claims = Claims {
+        iss: issuer.into(),
+        role: role.into(),
+    };
+    encode(&Header::default(), &claims, &secret.into().as_bytes())
 }

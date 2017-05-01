@@ -1,22 +1,21 @@
 [package]
 name = "eden"
-version = "0.1.0"
+version = "0.3.0"
 authors = ["Claus Matzinger <claus.matzinger+kb@gmail.com>"]
 
 [dependencies]
-simple_jwt = "*"
-serde = "*"
-serde_derive = "*"
-serde_json = "*"
+jsonwebtoken = "^2"
+serde = "^1"
+serde_derive = "^1"
+serde_json = "^1"
 i2cdev = "*"
 clap = "*"
 bmp085 = "0.1.1"
-ease = "*"
-hyper = "*"
+hyper = "^0.10.4"
+hyper-rustls = "^0.3.2"
 log4rs = { version = "*", features = ["serde_yaml"] }
 log = "*"
-docopt_macros = "*"
 chrono = "*"
-toml = "*"
+toml = "^0.4.0"
 mioco = "*"
-threadpool = "1.0"
+scoped-pool = "1"

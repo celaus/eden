@@ -1,10 +1,16 @@
-[keys]
-secret = "asdf" # JWT secret
-
-
 [sensors]
 sampling_rate = 1000 # Sensor reading timeout. Default: 1000
 temperature_barometer_addr = "/dev/i2c-1" # /dev address for the bmp085 sensor
+temperature_barometer_name = "Adafruit BMP180" # Name, meta data
+timeout = 90 # secs
 
-[settings]
-server_address = "http://localhost:6200" # Eden-server address
+[server]
+endpoint = "http://localhost:6200/data" # Eden-server address
+secret = "asdf" # JWT secret
+
+[device]
+name = "Raspberry 1" # A device identifier
+role = "sensor"
+
+[threads]
+send_pool = 4
