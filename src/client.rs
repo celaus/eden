@@ -32,6 +32,7 @@ use std::sync::Arc;
 use std::error::Error;
 use SensorReading;
 
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
     pub meta: MetaData,
@@ -40,10 +41,32 @@ pub struct Message {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Measurement {
-    pub sensor: String,
-    pub value: f64,
-    pub unit: String,
+pub enum Geometry {
+    Rectangle {
+        x: u64,
+        y: u64,
+        w: u64,
+        h: u64,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Measurement {
+    Simple {
+        name: String,
+        value: f64,
+        unit: String,
+    },
+    Tuple {
+        name: String,
+        value: Vec<f64>,
+        unit: String,
+    },
+    Geometry {
+        name: String,
+        value: Vec<Geometry>,
+        unit: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -121,15 +144,15 @@ impl SensorDataConsumer for Client {
                         SensorReading::TemperaturePressure { sensor, t, p, ts } => {
                             Message {
                                 meta: MetaData { name: sensor },
-                                data: vec![Measurement {
+                                data: vec![Measurement::Simple {
+                                               name: "temperature".to_string(),
                                                value: t as f64,
                                                unit: "celsius".to_string(),
-                                               sensor: "temperature".to_string(),
                                            },
-                                           Measurement {
+                                           Measurement::Simple {
                                                value: p as f64,
                                                unit: "kilopascal".to_string(),
-                                               sensor: "barometer".to_string(),
+                                               name: "barometer".to_string(),
                                            }],
                                 timestamp: ts,
                             }
