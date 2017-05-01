@@ -10,3 +10,7 @@ secret = "asdf" # JWT secret
 
 [device]
 name = "Raspberry 1" # A device identifier
+role = "sensor"
+
+[threads]
+send_pool = 4

@@ -23,8 +23,6 @@ extern crate log;
 extern crate log4rs;
 extern crate bmp085;
 extern crate i2cdev;
-extern crate rustc_serialize;
-
 
 mod client;
 mod error;
@@ -44,6 +42,7 @@ use config::{Settings, read_config};
 
 use client::{Client, SensorDataConsumer};
 use clap::{Arg, App};
+use auth::get_token;
 
 #[derive(Debug)]
 pub enum SensorReading {
@@ -80,23 +79,26 @@ fn main() {
           config_filename,
           logging_filename);
 
-    log4rs::init_file(logging_filename, Default::default()).unwrap();
-    let mut f = File::open(config_filename).unwrap();
-    let settings: Settings = read_config(&mut f).unwrap();
+    log4rs::init_file(logging_filename, Default::default()).expect("Could not initialize log4rs.");
+    let mut f = File::open(config_filename).expect("Could not open config file.");
+    let settings: Settings = read_config(&mut f).expect("Could not read config file.");
 
     info!("Initializing devices");
     let i2c_dev = LinuxI2CDevice::new(settings.sensors.temperature_barometer_addr.clone(),
                                       BMP085_I2C_ADDR)
-        .unwrap();
-    let mut temperature_barometer =
-        BMP085BarometerThermometer::new(i2c_dev, SamplingMode::Standard).unwrap();
+        .expect("Could not open i2c device.");
+    let mut temperature_barometer = BMP085BarometerThermometer::new(i2c_dev,
+                                                                    SamplingMode::Standard)
+        .expect("Could not initialize sensor driver");
 
     info!("Starting Eden");
-    let client = Client::new(&settings.server.endpoint,
-                             4usize,
-                             settings.server.secret.clone(),
-                             settings.device.name.clone())
-        .unwrap();
+    let device_info = settings.device.clone();
+    let token = get_token(device_info.name,
+                          device_info.role,
+                          settings.server.secret.clone())
+        .expect("Could not create token.");
+    let client = Client::new(&settings.server.endpoint, settings.threads.send_pool, token)
+        .expect("Could not create client.");
 
     let (tx, rx) = channel::<SensorReading>();
     let timeout = settings.sensors.timeout;
@@ -115,8 +117,8 @@ fn main() {
                     let now_ms = now.timestamp() * 1000 + (now.timestamp_subsec_millis() as i64);
                     let temp = SensorReading::TemperaturePressure {
                         sensor: settings.sensors.temperature_barometer_name.clone(),
-                        t: temperature_barometer.temperature_celsius().unwrap(),
-                        p: temperature_barometer.pressure_kpa().unwrap(),
+                        t: temperature_barometer.temperature_celsius().expect("Could not get temperature."),
+                        p: temperature_barometer.pressure_kpa().expect("Could not get pressure"),
                         ts: now_ms
                     };
                 // fire and forget

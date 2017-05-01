@@ -23,6 +23,7 @@ pub struct Settings {
     pub sensors: Sensors,
     pub server: Server,
     pub device: Agent,
+    pub threads: Threads,
 }
 
 #[derive(Deserialize)]
@@ -39,11 +40,16 @@ pub struct Server {
     pub secret: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct Agent {
     pub name: String,
+    pub role: String,
 }
 
+#[derive(Deserialize, Clone)]
+pub struct Threads {
+    pub send_pool: usize,
+}
 
 pub fn read_config<T: Read + Sized>(mut f: T) -> Result<Settings, ConfigError> {
     let mut buffer = String::new();

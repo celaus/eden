@@ -31,8 +31,6 @@ use self::scoped_pool::Pool;
 use std::sync::Arc;
 use std::error::Error;
 use SensorReading;
-use auth::get_token;
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
@@ -66,15 +64,8 @@ pub struct Client {
 }
 
 impl Client {
-    pub fn new<U: IntoUrl>(endpoint: U,
-                           pool_size: usize,
-                           secret: String,
-                           agent: String)
-                           -> Result<Client, String> {
+    pub fn new<U: IntoUrl>(endpoint: U, pool_size: usize, token: String) -> Result<Client, String> {
         let u = try!(endpoint.into_url().map_err(|e| e.description().to_owned()));
-
-        let token = try!(get_token(agent, "sensor", secret)
-            .map_err(|_| "Could not generate auth token".to_string()));
 
         let pool = Pool::new(pool_size);
         let hyper_client = match u.scheme() {

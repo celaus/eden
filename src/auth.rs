@@ -17,7 +17,7 @@ extern crate jsonwebtoken as jwt;
 use self::jwt::{encode, Header};
 use self::jwt::errors::Error;
 
-#[derive(RustcEncodable, RustcDecodable)]
+#[derive(Serialize, Deserialize)]
 struct Claims {
     iss: String,
     role: String,
@@ -33,5 +33,5 @@ pub fn get_token<I, R, S>(issuer: I, role: R, secret: S) -> Result<String, Error
         iss: issuer.into(),
         role: role.into(),
     };
-    encode(Header::default(), &claims, &secret.into().as_bytes())
+    encode(&Header::default(), &claims, &secret.into().as_bytes())
 }
