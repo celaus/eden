@@ -1,21 +1,21 @@
 [package]
 name = "eden"
-version = "0.3.0"
+version = "0.4.0"
 authors = ["Claus Matzinger <claus.matzinger+kb@gmail.com>"]
+edition = "2018"
 
 [dependencies]
-jsonwebtoken = "^2"
+jsonwebtoken = "6.0.1"
 serde = "^1"
 serde_derive = "^1"
 serde_json = "^1"
-i2cdev = "*"
-clap = "*"
-bmp085 = "0.1.1"
-hyper = "^0.10.4"
-hyper-rustls = "^0.3.2"
+i2cdev = "0.4.2"
+clap = "2.33.0"
+bmp085 = { git = "https://github.com/celaus/rust-bmp085" }
 log4rs = { version = "*", features = ["serde_yaml"] }
 log = "*"
-chrono = "*"
-toml = "^0.4.0"
-mioco = "*"
+chrono = "0.4.6"
+toml = "^0.5.1"
+tokio = "^0.1.21"
 scoped-pool = "1"
+reqwest = "0.9.18"

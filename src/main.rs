@@ -14,15 +14,14 @@
 
 #[macro_use]
 extern crate serde_derive;
-extern crate clap;
-extern crate chrono;
-#[macro_use]
-extern crate mioco;
 #[macro_use]
 extern crate log;
-extern crate log4rs;
-extern crate bmp085;
-extern crate i2cdev;
+
+use tokio::prelude::*;
+use tokio::timer::Interval;
+
+use std::time::{Duration, Instant};
+
 
 mod client;
 mod error;
@@ -30,14 +29,13 @@ mod config;
 mod auth;
 
 use bmp085::*;
-use i2cdev::linux::*;
-use i2cdev::sensors::{Barometer, Thermometer};
+use i2cdev::linux::LinuxI2CDevice;
+use bmp085::sensors::{Barometer, Thermometer};
 
 use std::fs::File;
 use std::sync::mpsc::channel;
 use std::thread;
-use std::time::Duration;
-use chrono::UTC;
+use chrono::Utc;
 use config::{Settings, read_config};
 
 use client::{Client, SensorDataConsumer};
@@ -56,7 +54,7 @@ pub enum SensorReading {
 
 fn main() {
     let matches = App::new("Eden Client")
-        .version("0.2.0")
+        .version("0.4.0")
         .author("Claus Matzinger. <claus.matzinger+kb@gmail.com>")
         .about("Reads sensor input and sends it to an Eden Server :)")
         .arg(Arg::with_name("config")
@@ -97,6 +95,7 @@ fn main() {
                           device_info.role,
                           settings.server.secret.clone())
         .expect("Could not create token.");
+
     let client = Client::new(&settings.server.endpoint, settings.threads.send_pool, token)
         .expect("Could not create client.");
 
@@ -106,26 +105,24 @@ fn main() {
         client.attach(rx, 100, Duration::from_secs(timeout));
     });
 
-    mioco::start(move || {
-            info!("Starting Event Loop");
-            loop {
-                let mut timer = mioco::timer::Timer::new();
-                timer.set_timeout(settings.sensors.sampling_rate.clone());
-                select!(
-                r:timer => {
-                    let now = UTC::now();
-                    let now_ms = now.timestamp() * 1000 + (now.timestamp_subsec_millis() as i64);
-                    let temp = SensorReading::TemperaturePressure {
-                        sensor: settings.sensors.temperature_barometer_name.clone(),
-                        t: temperature_barometer.temperature_celsius().expect("Could not get temperature."),
-                        p: temperature_barometer.pressure_kpa().expect("Could not get pressure"),
-                        ts: now_ms
-                    };
-                // fire and forget
-                    let _ = tx.send(temp);
-                });
-            }
+
+    info!("Starting Event Loop");
+
+    let task = Interval::new(Instant::now(), Duration::from_secs(10))
+        .for_each(|_instant| {
+            let now = Utc::now();
+            let now_ms = now.timestamp() * 1000 + (now.timestamp_subsec_millis() as i64);
+            let temp = SensorReading::TemperaturePressure {
+                sensor: settings.sensors.temperature_barometer_name.clone(),
+                t: temperature_barometer.temperature_celsius().expect("Could not get temperature."),
+                p: temperature_barometer.pressure_kpa().expect("Could not get pressure"),
+                ts: now_ms
+            };
+            // fire and forget
+            let _ = tx.send(temp);
+            Ok(())
         })
-        .unwrap();
-    let _ = dispatcher.join();
+        .map_err(|e| panic!("delay errored; err={:?}", e));
+
+    tokio::run(task);
 }

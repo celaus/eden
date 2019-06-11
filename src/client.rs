@@ -12,25 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use reqwest::IntoUrl;
 
-extern crate hyper;
-extern crate hyper_rustls;
-extern crate serde;
-extern crate serde_json;
-extern crate scoped_pool;
 use std::time::Duration;
-
-use self::hyper::Url;
-use self::hyper::client::{Client as HyperClient, IntoUrl};
-use self::hyper::net::{HttpConnector, HttpsConnector};
-use self::hyper_rustls::TlsClient;
 use std::sync::mpsc::Receiver;
-use self::hyper::header::{Authorization, Bearer, ContentType, ContentLength};
-use self::hyper::mime::{Mime, TopLevel, SubLevel, Attr, Value};
-use self::scoped_pool::Pool;
+
+use scoped_pool::Pool;
 use std::sync::Arc;
 use std::error::Error;
-use SensorReading;
+use crate::SensorReading;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
@@ -57,23 +47,19 @@ pub trait SensorDataConsumer {
 }
 
 pub struct Client {
-    endpoint: Url,
+    endpoint: reqwest::Url,
     jwt: String,
     sender_pool: Pool,
-    client: Arc<HyperClient>,
+    client: Arc<reqwest::Client>,
 }
 
 impl Client {
     pub fn new<U: IntoUrl>(endpoint: U, pool_size: usize, token: String) -> Result<Client, String> {
-        let u = try!(endpoint.into_url().map_err(|e| e.description().to_owned()));
+        let u = endpoint.into_url().map_err(|e| e.description().to_owned())?;
 
         let pool = Pool::new(pool_size);
-        let hyper_client = match u.scheme() {
-            "http" => HyperClient::with_connector(HttpConnector {}),
-            "https" => HyperClient::with_connector(HttpsConnector::new(TlsClient::new())),
-            _ => return Err("Unknown URL scheme".to_string()),
-        };
-        let client = Arc::new(hyper_client);
+        let http_client = reqwest::Client::new();
+        let client = Arc::new(http_client);
         Ok(Client {
             endpoint: u,
             jwt: token,
@@ -84,8 +70,6 @@ impl Client {
 
     pub fn send_bulk(&self, payload: Vec<Message>) {
 
-        let body = serde_json::to_string(&payload).unwrap();
-        debug!("Sending: {}", body);
         self.sender_pool.scoped(|scope| {
             let send_to = self.endpoint.clone();
             let token = self.jwt.clone();
@@ -93,12 +77,10 @@ impl Client {
 
             scope.execute(move || {
                 match client.post(send_to)
-                    .header(ContentLength(body.len() as u64))
-                    .header(ContentType(Mime(TopLevel::Application,
-                                             SubLevel::Json,
-                                             vec![(Attr::Charset, Value::Utf8)])))
-                    .header(Authorization(Bearer { token: token }))
-                    .body(&body)
+                    //.header("ContentLength", body.len() as u64)
+                    //.header("ContentType", "application/json;charset=utf-8")
+                    .header("Authorization", format!("Bearer {}", token))
+                    .json(&payload)
                     .send() {
                     Ok(_) => (),//Ok(()),
                     Err(e) => {

@@ -15,7 +15,7 @@
 extern crate toml;
 extern crate serde;
 
-use error::ConfigError;
+use crate::error::ConfigError;
 use std::io::Read;
 
 #[derive(Deserialize)]
@@ -53,6 +53,6 @@ pub struct Threads {
 
 pub fn read_config<T: Read + Sized>(mut f: T) -> Result<Settings, ConfigError> {
     let mut buffer = String::new();
-    try!(f.read_to_string(&mut buffer).map_err(ConfigError::Io));
+    f.read_to_string(&mut buffer).map_err(ConfigError::Io)?;
     toml::from_str(&buffer).map_err(ConfigError::Parse)
 }
